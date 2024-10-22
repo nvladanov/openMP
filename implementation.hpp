@@ -31,7 +31,7 @@ unsigned long SequenceInfo::gpsa_sequential(float** S) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 32) {
+unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 64) {
     unsigned long visited = 0;
     int gap_penalty = -2;  // Linear gap penalty
 
@@ -39,15 +39,15 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 32) {
     #pragma omp parallel for
     for (unsigned int i = 1; i < rows; i++) {
         S[i][0] = i * gap_penalty;
-        #pragma omp atomic
-        visited++;
+        // #pragma omp atomic
+        // visited++;
     }
 
     #pragma omp parallel for
     for (unsigned int j = 0; j < cols; j++) {
         S[0][j] = j * gap_penalty;
-        #pragma omp atomic
-        visited++;
+        // #pragma omp atomic
+        // visited++;
     }
 
     // Parallelize the core loop using OpenMP taskloop
@@ -63,8 +63,8 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 32) {
                     float del = S[i - 1][j] + gap_penalty;
                     float insert = S[i][j - 1] + gap_penalty;
                     S[i][j] = std::max({match, del, insert});
-                    #pragma omp atomic
-                    visited++;
+                    // #pragma omp atomic
+                    // visited++;
                 }
             }
         }
