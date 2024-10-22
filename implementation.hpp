@@ -54,49 +54,6 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 1) {
     {
         #pragma omp single
         {
-            #pragma omp taskloop grainsize(grain_size) reduction(+:visited)
-            for (unsigned int i = 1; i < rows; i++) {
-                for (unsigned int j = 1; j < cols; j++) {
-                    float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
-                    float del = S[i - 1][j] + gap_penalty;
-                    float insert = S[i][j - 1] + gap_penalty;
-                    S[i][j] = std::max({match, del, insert});
-                    visited++;  // Increment the local visited variable, will be reduced later
-                }
-            }
-        }
-    }
-
-    return visited;
-}
-
-unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size = 32) {
-    unsigned long visited = 0;
-    int gap_penalty = -2;  // Linear gap penalty
-
-    // Initialize boundary conditions (sequential)
-    #pragma omp parallel for
-    for (unsigned int i = 1; i < rows; i++) {
-        S[i][0] = i * gap_penalty;
-        #pragma omp atomic
-        visited++;
-    }
-
-    #pragma omp parallel for
-    for (unsigned int j = 0; j < cols; j++) {
-        S[0][j] = j * gap_penalty;
-        #pragma omp atomic
-        visited++;
-    }
-
-    // Use explicit tasks for parallelization with dependencies
-    int match_score = 1, mismatch_score = -1;
-    
-    // Process the matrix in antidiagonal order
-    #pragma omp parallel
-    {
-        #pragma omp single
-        {
             for (unsigned int k = 1; k < rows + cols - 1; k++) {
                 #pragma omp task depend(inout: S) firstprivate(k) // Create tasks per diagonal
                 {
@@ -118,4 +75,10 @@ unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size = 32) {
     }
 
     return visited;
+}
+
+unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size = 32) {
+
+
+    return 0;
 }
