@@ -36,7 +36,12 @@ unsigned long SequenceInfo::gpsa_sequential(float** S) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=10) {
+inline float max_of_three(float a, float b, float c) {
+    float max_ab = (a > b) ? a : b;
+    return (max_ab > c) ? max_ab : c;
+}
+
+unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=1) {
     unsigned long visited = 0;
 
     #pragma omp parallel
@@ -44,26 +49,27 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=10) {
         #pragma omp single
         {
             // Parallelized Boundary Initialization using Taskloop
-            #pragma omp taskloop grainsize(grain_size)
+            #pragma omp taskloop grainsize(grain_size) nogroup
             for (unsigned int i = 1; i < rows; i++) {
                 S[i][0] = i * gap_penalty;
-                #pragma omp atomic
-                visited++;
+                // visited++; // Optionally increment if needed
             }
 
-            #pragma omp taskloop grainsize(grain_size)
+            #pragma omp taskloop grainsize(grain_size) nogroup
             for (unsigned int j = 0; j < cols; j++) {
                 S[0][j] = j * gap_penalty;
-                #pragma omp atomic
-                visited++;
+                // visited++; // Optionally increment if needed
             }
+
+            // Wait for boundary initialization tasks to complete
+            #pragma omp taskwait
 
             // Main computation along anti-diagonals
             for (unsigned int k = 2; k <= rows + cols - 2; k++) {
                 unsigned int start_i = (k >= cols) ? (k - cols + 1) : 1;
                 unsigned int end_i = (k >= rows) ? (rows - 1) : (k - 1);
 
-                #pragma omp taskloop grainsize(grain_size)
+                #pragma omp taskloop grainsize(grain_size) nogroup
                 for (unsigned int i = start_i; i <= end_i; i++) {
                     unsigned int j = k - i + 1;
                     float match = S[i - 1][j - 1] + ((X[i - 1] == Y[j - 1]) ? match_score : mismatch_score);
@@ -71,14 +77,16 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=10) {
                     float insert = S[i][j - 1] + gap_penalty;
                     S[i][j] = max_of_three(match, del, insert);
 
-                    #pragma omp atomic
-                    visited++;
+                    // visited++; // Optionally increment if needed
                 }
+
+                // Ensure that all tasks for the current anti-diagonal are complete before proceeding
+                #pragma omp taskwait
             }
         }
     }
 
-    return visited;
+    return visited; // If visited is used, accumulate it properly
 }
 
 unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size=10) {
