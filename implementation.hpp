@@ -2,6 +2,11 @@
 #include <omp.h>
 #include "helpers.hpp"
 
+inline float max_of_three(float a, float b, float c) {
+    float max_ab = (a > b) ? a : b;
+    return (max_ab > c) ? max_ab : c;
+}
+
 unsigned long SequenceInfo::gpsa_sequential(float** S) {
     unsigned long visited = 0;
 
@@ -74,11 +79,6 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=1) {
     }
 
     return visited;
-}
-
-inline float max_of_three(float a, float b, float c) {
-    float max_ab = (a > b) ? a : b;
-    return (max_ab > c) ? max_ab : c;
 }
 
 unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size=1) {
