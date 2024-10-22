@@ -31,7 +31,7 @@ unsigned long SequenceInfo::gpsa_sequential(float** S) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size) {
+unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 32) {
     unsigned long visited = 0;
     int gap_penalty = -2;  // Linear gap penalty
 
@@ -56,7 +56,7 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size) {
     {
         #pragma omp single
         {
-            #pragma omp taskloop grainsize(grain_size)
+            #pragma omp taskloop grainsize(grain_size = 32)
             for (unsigned int i = 1; i < rows; i++) {
                 for (unsigned int j = 1; j < cols; j++) {
                     float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
@@ -73,7 +73,7 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size) {
+unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size = 32) {
     unsigned long visited = 0;
     int gap_penalty = -2;  // Linear gap penalty
 
