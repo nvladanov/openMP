@@ -36,7 +36,7 @@ unsigned long SequenceInfo::gpsa_sequential(float** S) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=1) {
+unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size=1000) {
     unsigned long visited = 0;
 
     #pragma omp parallel
