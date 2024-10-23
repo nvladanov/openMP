@@ -41,13 +41,13 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
         #pragma omp single
         {
             // Create tasks for both the first column and first row in parallel
-            #pragma omp taskloop grainsize(128) reduction(+:visited)
+            #pragma omp taskloop grainsize(64) reduction(+:visited)
             for (int i = 1; i < rows; i++) {
                 S[i][0] = i * gap_penalty;
                 visited++;
             }
 
-            #pragma omp taskloop grainsize(128) reduction(+:visited)
+            #pragma omp taskloop grainsize(64) reduction(+:visited)
             for (int j = 0; j < cols; j++) {
                 S[0][j] = j * gap_penalty;
                 visited++;
