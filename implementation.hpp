@@ -31,7 +31,7 @@ unsigned long SequenceInfo::gpsa_sequential(float** S) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
+unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 1) {
     unsigned long visited = 0;
     int gap_penalty = -2;
     int match_score = 1, mismatch_score = -1;
