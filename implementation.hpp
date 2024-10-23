@@ -51,38 +51,29 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
     int num_blocks_x = (rows + block_size - 1) / block_size;
     int num_blocks_y = (cols + block_size - 1) / block_size;
 
-    // Проходим по горизонтальным полосам блоков
-    for (int block_row = 0; block_row < num_blocks_x; block_row++) {
+            // Iterate over all diagonals
+    #pragma omp taskloop grainsize(block_size) reduction(+:visited)
+    for (unsigned int k = 1; k < rows + cols - 1; k++) {
+        // Determine starting row and column for the k-th diagonal
+        unsigned int start_row = (k < rows) ? k : rows - 1;
+        unsigned int start_col = (k < rows) ? 1 : k - rows + 1;
+
+        // Iterate over the elements on this diagonal
+        
         #pragma omp parallel
         {
             #pragma omp single
             {
-                // Проходим по блокам в рамках одной горизонтальной полосы
-                #pragma omp taskloop reduction(+:visited)
-                for (int block_col = 0; block_col < num_blocks_y; block_col++) {
-                    // Параллельная обработка блоков в рамках одной горизонтали
-                    // Определяем границы блока
-                    int start_row = block_row * block_size + 1;
-                    int end_row = std::min((block_row + 1) * block_size, rows);
-                    int start_col = block_col * block_size + 1;
-                    int end_col = std::min((block_col + 1) * block_size, cols);
-
-                    // Вычисления внутри каждого блока по диагональной схеме
-                    #pragma omp taskloop reduction(+:visited)
-                    for (int diag = 0; diag < (end_row - start_row + 1) + (end_col - start_col + 1) - 1; diag++) {
-                        for (int i = std::min(start_row + diag, end_row); i > start_row && (i - start_row) < (end_col - start_col); i--) {
-                            int j = start_col + diag - (i - start_row);
-                            if (j < end_col) {
-                                float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
-                                float del = S[i - 1][j] + gap_penalty;
-                                float insert = S[i][j - 1] + gap_penalty;
-                                S[i][j] = std::max({match, del, insert});
-                                visited++;  // Счётчик посещённых ячеек
-                            }
-                        }
-                    }
+                // Iterate over all diagonals
+                #pragma omp taskloop grainsize(block_size) reduction(+:visited)
+                for (unsigned int i = start_row, j = start_col; i >= 1 && j < cols; i--, j++) {
+                    float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
+                    float del = S[i - 1][j] + gap_penalty;
+                    float insert = S[i][j - 1] + gap_penalty;
+                    S[i][j] = std::max({match, del, insert});
+                    visited++;  // Increment the visited counter
                 }
-            }
+            }        
         }
     }
 
