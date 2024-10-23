@@ -50,34 +50,38 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
     int num_blocks_y = (cols + block_size - 1) / block_size;
 	
 	// Main part
-   #pragma omp parallel
+    #pragma omp parallel
     {
         #pragma omp single
         {
             // Iterate over the antidiagonals of blocks
-            for (unsigned int k = 0; k < num_blocks_x + num_blocks_y - 1; k++) {
-                #pragma omp taskloop reduction(+:visited)
-                for (unsigned int block_i = std::max(0, (int)(k - num_blocks_y + 1)); block_i <= std::min(k, (unsigned int)num_blocks_x - 1); block_i++) {
-                    unsigned int block_j = k - block_i;
+            for (int k = 0; k < num_blocks_x + num_blocks_y - 1; k++) {
+                for (int block_i = std::max(0, k - num_blocks_y + 1); block_i <= std::min(k, num_blocks_x - 1); block_i++) {
+                    int block_j = k - block_i;
 
-                    // For each block (block_i, block_j), process the wavefront inside the block
-                    unsigned int start_row = block_i * block_size + 1;
-                    unsigned int end_row = std::min(static_cast<int>((block_i + 1) * block_size), rows);
-                    unsigned int start_col = block_j * block_size + 1;
-                    unsigned int end_col = std::min(static_cast<int>((block_j + 1) * block_size), cols);
+                    // Create tasks for each block
+                    #pragma omp task firstprivate(block_i, block_j) depend(inout: S)
+                    {
+                        // Calculate the bounds of the current block
+                        int start_row = block_i * block_size + 1;
+                        int end_row = std::min((block_i + 1) * block_size, rows);
+                        int start_col = block_j * block_size + 1;
+                        int end_col = std::min((block_j + 1) * block_size, cols);
 
-                    for (unsigned int diag = 0; diag < (end_row - start_row + 1) + (end_col - start_col + 1) - 1; diag++) {
-                        for (unsigned int i = std::min(start_row + diag, end_row); i > start_row && (i - start_row) < (end_col - start_col); i--) {
-                            unsigned int j = start_col + diag - (i - start_row);
-                            if (j < end_col) {
-                                float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
-                                float del = S[i - 1][j] + gap_penalty;
-                                float insert = S[i][j - 1] + gap_penalty;
-                                S[i][j] = std::max({match, del, insert});
-                                visited++;  // Increment visited count
+                        // Process the wavefront within the block
+                        for (int diag = 0; diag < (end_row - start_row + 1) + (end_col - start_col + 1) - 1; diag++) {
+                            for (int i = std::min(start_row + diag, end_row); i > start_row && (i - start_row) < (end_col - start_col); i--) {
+                                int j = start_col + diag - (i - start_row);
+                                if (j < end_col) {
+                                    float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
+                                    float del = S[i - 1][j] + gap_penalty;
+                                    float insert = S[i][j - 1] + gap_penalty;
+                                    S[i][j] = std::max({match, del, insert});
+                                    visited++;  // Increment visited count
+                                }
                             }
                         }
-                    }
+                    }  // End of task
                 }
             }
         }
