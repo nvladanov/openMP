@@ -36,57 +36,33 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
     int gap_penalty = -2;
     int match_score = 1, mismatch_score = -1;
 
+
+    unsigned int total_diagonals = rows + cols - 1;
+
     #pragma omp parallel
     {
         #pragma omp single
         {
-            #pragma omp taskloop grainsize(rows/64) reduction(+:visited)
-            for (int i = 1; i < rows; i++) {
-                S[i][0] = i * gap_penalty;
-                visited++;
-            }
+            for (unsigned int k = 2; k <= total_diagonals - 1; k++) {
+                unsigned int i_start = std::max(1u, k >= cols ? k - cols + 1 : 1u);
+                unsigned int i_end = std::min(rows - 1, k - 1);
 
-            #pragma omp taskloop grainsize(cols/64) reduction(+:visited)
-            for (int j = 0; j < cols; j++) {
-                S[0][j] = j * gap_penalty;
-                visited++;
+                #pragma omp taskloop grainsize(grain_size)
+                for (unsigned int i = i_start; i <= i_end; i++) {
+                    unsigned int j = k - i;
+                    if (j >= 1 && j <= cols - 1) {
+                        float match = S[i - 1][j - 1] + ((X[i - 1] == Y[j - 1]) ? match_score : mismatch_score);
+                        float del = S[i - 1][j] + gap_penalty;
+                        float insert = S[i][j - 1] + gap_penalty;
+                        S[i][j] = std::max({match, del, insert});
+                        #pragma omp atomic
+                        visited++;
+                    }
+                }
+                #pragma omp taskwait // Ensure all tasks in the current anti-diagonal are completed
             }
         }
     }
-
-
-    int num_blocks_x = (rows + block_size - 1) / block_size;
-    int num_blocks_y = (cols + block_size - 1) / block_size;
-    
-            #pragma omp parallel 
-            for (int block_row = 0; block_row < num_blocks_x; block_row++) {
-                for (int block_col = 0; block_col < num_blocks_y; block_col++) {
-                    // Parallel task for each block
-                    #pragma omp task firstprivate(block_row, block_col) reduction(+:visited)
-                    {
-                        // Define the boundaries of the block
-                        int start_row = block_row * block_size + 1;
-                        int end_row = std::min((block_row + 1) * block_size, rows);
-                        int start_col = block_col * block_size + 1;
-                        int end_col = std::min((block_col + 1) * block_size, cols);
-
-                        // Diagonal computation within the block
-                        for (int diag = 0; diag < (end_row - start_row + 1) + (end_col - start_col + 1) - 1; diag++) {
-                            for (int i = std::min(start_row + diag, end_row); i > start_row && (i - start_row) < (end_col - start_col); i--) {
-                                int j = start_col + diag - (i - start_row);
-                                if (j < end_col) {
-                                    float match = S[i - 1][j - 1] + (X[i - 1] == Y[j - 1] ? match_score : mismatch_score);
-                                    float del = S[i - 1][j] + gap_penalty;
-                                    float insert = S[i][j - 1] + gap_penalty;
-                                    S[i][j] = std::max({match, del, insert});
-                                    visited++;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
 
     return visited;
 }
