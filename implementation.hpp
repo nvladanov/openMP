@@ -55,7 +55,6 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
         }
     }
 
-    51480*53640/32
 
     // Iterate over all diagonals
 	for (unsigned int i = 1; i < rows; i++) {
