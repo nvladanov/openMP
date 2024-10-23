@@ -1,3 +1,4 @@
+#include <algorithm> 
 #include <unordered_map>
 #include <omp.h>
 #include "helpers.hpp"
@@ -44,8 +45,8 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 1) {
         #pragma omp single
         {
             for (unsigned int k = 2; k <= total_diagonals - 1; k++) {
-                unsigned int i_start = std::max(1u, k >= cols ? k - cols + 1 : 1u);
-                unsigned int i_end = std::min(rows - 1, k - 1);
+                unsigned int i_start = (std::max)(1u, k >= cols ? k - cols + 1u : 1u);
+                unsigned int i_end = (std::min)(rows - 1u, k - 1u);
 
                 #pragma omp taskloop grainsize(grain_size)
                 for (unsigned int i = i_start; i <= i_end; i++) {
