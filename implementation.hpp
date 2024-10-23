@@ -36,23 +36,30 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
     int gap_penalty = -2;
     int match_score = 1, mismatch_score = -1;
 
-    // Инициализация граничных условий (последовательно)
-    for (int i = 1; i < rows; i++) {
-        S[i][0] = i * gap_penalty;
-        visited++;
-    }
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            // Create tasks for both the first column and first row in parallel
+            #pragma omp taskloop grainsize(1024) reduction(+:visited)
+            for (int i = 1; i < rows; i++) {
+                S[i][0] = i * gap_penalty;
+                visited++;
+            }
 
-    for (int j = 0; j < cols; j++) {
-        S[0][j] = j * gap_penalty;
-        visited++;
+            #pragma omp taskloop grainsize(1024) reduction(+:visited)
+            for (int j = 0; j < cols; j++) {
+                S[0][j] = j * gap_penalty;
+                visited++;
+            }
+        }
     }
 
     // Вычисляем количество блоков по вертикали и горизонтали
     int num_blocks_x = (rows + block_size - 1) / block_size;
     int num_blocks_y = (cols + block_size - 1) / block_size;
 
-            // Iterate over all diagonals
-    #pragma omp taskloop grainsize(block_size) reduction(+:visited)
+    // Iterate over all diagonals
     for (unsigned int k = 1; k < rows + cols - 1; k++) {
         // Determine starting row and column for the k-th diagonal
         unsigned int start_row = (k < rows) ? k : rows - 1;
