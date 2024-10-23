@@ -42,13 +42,13 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
         {
             #pragma omp taskloop grainsize(rows/64) reduction(+:visited)
             for (int i = 1; i < rows; i++) {
-                S[0][i] = i * gap_penalty;
+                S[i][0] = i * gap_penalty;
                 visited++;
             }
 
             #pragma omp taskloop grainsize(cols/64) reduction(+:visited)
             for (int j = 0; j < cols; j++) {
-                S[j][0] = j * gap_penalty;
+                S[0][j] = j * gap_penalty;
                 visited++;
             }
         }
