@@ -58,22 +58,19 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
     int num_blocks_x = (rows + block_size - 1) / block_size;
     int num_blocks_y = (cols + block_size - 1) / block_size;
     
-    for (int block_row = 0; block_row < num_blocks_x; block_row++) {
-        #pragma omp parallel
-        {
-            #pragma omp single
-            {
-                #pragma omp taskloop reduction(+:visited)
-                for (int block_col = 0; block_col <  num_blocks_y; block_col++) {
-                        // Параллельная обработка блоков в рамках одной горизонтали
-                        // Определяем границы блока
+            #pragma omp parallel 
+            for (int block_row = 0; block_row < num_blocks_x; block_row++) {
+                for (int block_col = 0; block_col < num_blocks_y; block_col++) {
+                    // Parallel task for each block
+                    #pragma omp task firstprivate(block_row, block_col) reduction(+:visited)
+                    {
+                        // Define the boundaries of the block
                         int start_row = block_row * block_size + 1;
                         int end_row = std::min((block_row + 1) * block_size, rows);
                         int start_col = block_col * block_size + 1;
                         int end_col = std::min((block_col + 1) * block_size, cols);
 
-                        // Вычисления внутри каждого блока по диагональной схеме
-                        #pragma omp taskloop reduction(+:visited)
+                        // Diagonal computation within the block
                         for (int diag = 0; diag < (end_row - start_row + 1) + (end_col - start_col + 1) - 1; diag++) {
                             for (int i = std::min(start_row + diag, end_row); i > start_row && (i - start_row) < (end_col - start_col); i--) {
                                 int j = start_col + diag - (i - start_row);
@@ -82,14 +79,14 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int block_size = 1) {
                                     float del = S[i - 1][j] + gap_penalty;
                                     float insert = S[i][j - 1] + gap_penalty;
                                     S[i][j] = std::max({match, del, insert});
-                                    visited++;  // Счётчик посещённых ячеек
+                                    visited++;
                                 }
                             }
                         }
+                    }
                 }
             }
-        }
-    }
+
 
     return visited;
 }
