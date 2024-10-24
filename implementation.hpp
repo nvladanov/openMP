@@ -32,46 +32,60 @@ unsigned long SequenceInfo::gpsa_sequential(float** S) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 1) {
+unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size) {
     unsigned long visited = 0;
-    int gap_penalty = -2;
-    int match_score = 1, mismatch_score = -1;
 
-    #pragma omp parallel
-    #pragma omp single
-    {
-        #pragma omp taskloop grainsize(512) reduction(+:visited)
-        for (unsigned int i = 1; i < rows; i++) {
-            S[i][0] = i * gap_penalty;
-            visited++;
-        }
-
-        #pragma omp taskloop grainsize(512) reduction(+:visited)
-        for (unsigned int j = 0; j < cols; j++) {
-            S[0][j] = j * gap_penalty;
-            visited++;
-        }
+    // Boundary initialization (sequential)
+    for (unsigned int i = 1; i < rows; i++) {
+        S[i][0] = i * gap_penalty;
+        visited++;
     }
 
-    unsigned int total_diagonals = rows + cols - 1;
+    for (unsigned int j = 0; j < cols; j++) {
+        S[0][j] = j * gap_penalty;
+        visited++;
+    }
 
-    #pragma omp parallel reduction(+:visited)
-    {
-        #pragma omp single
+    // Define block size
+    int block_size = grain_size;
+
+    int n_blocks_row = (rows - 1 + block_size - 1) / block_size;
+    int n_blocks_col = (cols - 1 + block_size - 1) / block_size;
+    int num_block_diagonals = n_blocks_row + n_blocks_col - 1;
+
+    // Process blocks in diagonal order
+    for (int k = 0; k < num_block_diagonals; k++) {
+        #pragma omp parallel reduction(+:visited)
         {
-            for (unsigned int k = 2; k <= total_diagonals - 1; k++) {
-                unsigned int i_start = (k <= cols - 1) ? 1 : k - (cols - 1);
-                unsigned int i_end   = (k <= rows - 1) ? k - 1 : rows - 1;
+            #pragma omp single
+            {
+                for (int i = std::max(0, k - n_blocks_col + 1); i <= std::min(k, n_blocks_row - 1); i++) {
+                    int j = k - i;
 
-                #pragma omp taskloop grainsize(grain_size) reduction(+:visited)
-                for (unsigned int i = i_start; i <= i_end; i++) {
-                    unsigned int j = k - i;
-                    if (j >= 1 && j <= cols - 1) {
-                        float match = S[i - 1][j - 1] + ((X[i - 1] == Y[j - 1]) ? match_score : mismatch_score);
-                        float del = S[i - 1][j] + gap_penalty;
-                        float insert = S[i][j - 1] + gap_penalty;
-                        S[i][j] = std::max({match, del, insert});
-                        visited++;
+                    #pragma omp task
+                    {
+                        unsigned long local_visited = 0; // Local accumulator
+
+                        int row_start = 1 + i * block_size;
+                        int row_end = std::min(row_start + block_size, rows);
+                        int col_start = 1 + j * block_size;
+                        int col_end = std::min(col_start + block_size, cols);
+
+                        // Compute block
+                        for (int ii = row_start; ii < row_end; ii++) {
+                            for (int jj = col_start; jj < col_end; jj++) {
+                                float match = S[ii - 1][jj - 1] +
+                                    (X[ii - 1] == Y[jj - 1] ? match_score : mismatch_score);
+                                float del = S[ii - 1][jj] + gap_penalty;
+                                float insert = S[ii][jj - 1] + gap_penalty;
+                                S[ii][jj] = std::max({match, del, insert});
+
+                                local_visited++;
+                            }
+                        }
+
+                        // Reduction: accumulate local_visited into visited
+                        visited += local_visited;
                     }
                 }
                 #pragma omp taskwait
@@ -82,65 +96,75 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size = 1) {
     return visited;
 }
 
-unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size = 1) {
-    unsigned long total_visited = 0;
+unsigned long SequenceInfo::gpsa_tasks(float** S, int grain_size) {
+    unsigned long visited = 0;
 
     // Boundary initialization (sequential)
     for (unsigned int i = 1; i < rows; i++) {
         S[i][0] = i * gap_penalty;
+        visited++;
     }
 
     for (unsigned int j = 0; j < cols; j++) {
         S[0][j] = j * gap_penalty;
+        visited++;
     }
 
-    unsigned int total_diagonals = rows + cols - 1;
-    int* deps = new int[total_diagonals];
-    for (unsigned int i = 0; i < total_diagonals; i++) deps[i] = 0;
+    // Define block size
+    int block_size = grain_size;
 
-    // Use thread-private variables for visited counts
-    unsigned long* visited_counts = new unsigned long[omp_get_max_threads()]();
-    
-    #pragma omp parallel
+    int n_blocks_row = (rows - 1 + block_size - 1) / block_size;
+    int n_blocks_col = (cols - 1 + block_size - 1) / block_size;
+
+    // Use a parallel region with reduction
+    #pragma omp parallel reduction(+:visited)
     {
-        int thread_id = omp_get_thread_num();
         #pragma omp single
         {
-            for (unsigned int k = 2; k <= total_diagonals - 1; k++) {
-                unsigned int i_start = (std::max)(1u, k >= cols ? k - cols + 1u : 1u);
-                unsigned int i_end = (std::min)(rows - 1u, k - 1u);
+            for (int i = 0; i < n_blocks_row; i++) {
+                for (int j = 0; j < n_blocks_col; j++) {
+                    int row_start = 1 + i * block_size;
+                    int row_end = std::min(row_start + block_size, rows);
+                    int col_start = 1 + j * block_size;
+                    int col_end = std::min(col_start + block_size, cols);
 
-                for (unsigned int i_block = i_start; i_block <= i_end; i_block += grain_size) {
-                    unsigned int i_block_end = std::min(i_block + grain_size - 1, i_end);
+                    // Determine dependencies
+                    int num_deps = 0;
+                    void* deps_in[3];
+                    if (i > 0 && j > 0) {
+                        deps_in[num_deps++] = &S[row_start - 1][col_start - 1];
+                    }
+                    if (i > 0) {
+                        deps_in[num_deps++] = &S[row_start - 1][col_start];
+                    }
+                    if (j > 0) {
+                        deps_in[num_deps++] = &S[row_start][col_start - 1];
+                    }
 
-                    #pragma omp task firstprivate(k, i_block, i_block_end, thread_id) \
-                        depend(in: deps[k - 1]) depend(inout: deps[k])
+                    #pragma omp task depend(in: deps_in[0:num_deps])
                     {
                         unsigned long local_visited = 0;
-                        for (unsigned int i = i_block; i <= i_block_end; i++) {
-                            unsigned int j = k - i;
-                            if (j >= 1 && j <= cols - 1) {
-                                float match = S[i - 1][j - 1] + ((X[i - 1] == Y[j - 1]) ? match_score : mismatch_score);
-                                float del = S[i - 1][j] + gap_penalty;
-                                float insert = S[i][j - 1] + gap_penalty;
-                                S[i][j] = std::max({match, del, insert});
+
+                        // Compute block
+                        for (int ii = row_start; ii < row_end; ii++) {
+                            for (int jj = col_start; jj < col_end; jj++) {
+                                float match = S[ii - 1][jj - 1] +
+                                    (X[ii - 1] == Y[jj - 1] ? match_score : mismatch_score);
+                                float del = S[ii - 1][jj] + gap_penalty;
+                                float insert = S[ii][jj - 1] + gap_penalty;
+                                S[ii][jj] = std::max({match, del, insert});
+
                                 local_visited++;
                             }
                         }
-                        // Accumulate local visited count to thread's total
-                        visited_counts[thread_id] += local_visited;
+
+                        // Reduction of local_visited to visited
+                        visited += local_visited;
                     }
                 }
             }
         }
     }
 
-    // Sum up the visited counts from all threads
-    for (int i = 0; i < omp_get_max_threads(); i++) {
-        total_visited += visited_counts[i];
-    }
-
-    delete[] deps;
-    delete[] visited_counts;
-    return total_visited;
+    return visited;
 }
