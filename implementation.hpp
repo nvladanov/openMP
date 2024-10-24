@@ -54,44 +54,42 @@ unsigned long SequenceInfo::gpsa_taskloop(float** S, int grain_size) {
     int num_block_diagonals = n_blocks_row + n_blocks_col - 1;
 
     // Process blocks in diagonal order
-    // for (int k = 0; k < num_block_diagonals; k++) {
-    //     #pragma omp parallel reduction(+:visited)
-    //     {
-    //         #pragma omp single
-    //         {
-    //             for (int i = std::max(0, k - n_blocks_col + 1); i <= std::min(k, n_blocks_row - 1); i++) {
-    //                 int j = k - i;
+    for (int k = 0; k < num_block_diagonals; k++) {
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                int start_i = std::max(0, k - n_blocks_col + 1);
+                int end_i = std::min(k, n_blocks_row - 1);
 
-    //                 #pragma omp task
-    //                 {
-    //                     unsigned long local_visited = 0; // Local accumulator
+                #pragma omp taskloop
+                for (int idx = start_i; idx <= end_i; idx++) {
+                    int i = idx;
+                    int j = k - i;
 
-    //                     int row_start = 1 + i * block_size;
-    //                     int row_end = std::min(row_start + block_size, rows);
-    //                     int col_start = 1 + j * block_size;
-    //                     int col_end = std::min(col_start + block_size, cols);
+                    int row_start = 1 + i * block_size;
+                    int row_end = std::min(row_start + block_size, rows);
+                    int col_start = 1 + j * block_size;
+                    int col_end = std::min(col_start + block_size, cols);
 
-    //                     // Compute block
-    //                     for (int ii = row_start; ii < row_end; ii++) {
-    //                         for (int jj = col_start; jj < col_end; jj++) {
-    //                             float match = S[ii - 1][jj - 1] +
-    //                                 (X[ii - 1] == Y[jj - 1] ? match_score : mismatch_score);
-    //                             float del = S[ii - 1][jj] + gap_penalty;
-    //                             float insert = S[ii][jj - 1] + gap_penalty;
-    //                             S[ii][jj] = std::max({match, del, insert});
+                    // Compute block
+                    for (int ii = row_start; ii < row_end; ii++) {
+                        for (int jj = col_start; jj < col_end; jj++) {
+                            float match = S[ii - 1][jj - 1] +
+                                (X[ii - 1] == Y[jj - 1] ? match_score : mismatch_score);
+                            float del = S[ii - 1][jj] + gap_penalty;
+                            float insert = S[ii][jj - 1] + gap_penalty;
+                            S[ii][jj] = std::max({match, del, insert});
 
-    //                             local_visited++;
-    //                         }
-    //                     }
-
-    //                     // Reduction: accumulate local_visited into visited
-    //                     visited += local_visited;
-    //                 }
-    //             }
-    //             #pragma omp taskwait
-    //         }
-    //     }
-    // }
+                            #pragma omp atomic
+                            visited++;
+                        }
+                    }
+                }
+                #pragma omp taskwait
+            }
+        }
+    }
 
     return visited;
 }
